@@ -1,0 +1,61 @@
+-- ============================================================
+-- Ensure password file is enabled (should already be EXCLUSIVE)
+-- ============================================================
+SHOW PARAMETER REMOTE_LOGIN_PASSWORDFILE;
+
+-- ============================================================
+-- Create users (common users required for SYSDBA / SYSOPER)
+-- Common user names must begin with C##
+-- ============================================================
+
+CREATE USER C##KGAG IDENTIFIED BY "pass" CONTAINER=ALL;
+CREATE USER C##AANT IDENTIFIED BY "pass" CONTAINER=ALL;
+CREATE USER C##CJOR IDENTIFIED BY "pass" CONTAINER=ALL;
+CREATE USER C##EITU IDENTIFIED BY "pass" CONTAINER=ALL;
+CREATE USER C##CDEM IDENTIFIED BY "pass" CONTAINER=ALL;
+
+-- Allow them to log in
+GRANT CREATE SESSION TO C##KGAG;
+GRANT CREATE SESSION TO C##AANT;
+GRANT CREATE SESSION TO C##CJOR;
+GRANT CREATE SESSION TO C##EITU;
+GRANT CREATE SESSION TO C##CDEM;
+
+-- ============================================================
+-- Grant DBA roles
+-- ============================================================
+GRANT DBA TO C##KGAG;
+GRANT DBA TO C##AANT;
+GRANT DBA TO C##CJOR;
+GRANT DBA TO C##EITU;
+GRANT DBA TO C##CDEM;
+
+-- ============================================================
+-- Grant SYSDBA / SYSOPER privileges
+-- Only possible for common users
+-- ============================================================
+GRANT SYSDBA TO C##KGAG;
+GRANT SYSDBA TO C##AANT;
+
+GRANT SYSOPER TO C##CJOR;
+GRANT SYSOPER TO C##EITU;
+GRANT SYSOPER TO C##CDEM;
+
+-- ============================================================
+-- Additional roles
+-- ============================================================
+GRANT RECOVERY_CATALOG_OWNER TO C##KGAG;
+GRANT ADVISOR TO C##AANT;
+GRANT ADVISOR TO C##EITU;
+
+
+GRANT ALTER SESSION TO C##KGAG CONTAINER=ALL;
+GRANT ALTER SESSION TO C##AANT CONTAINER=ALL;
+GRANT ALTER SESSION TO C##CJOR CONTAINER=ALL;
+GRANT ALTER SESSION TO C##EITU CONTAINER=ALL;
+GRANT ALTER SESSION TO C##CDEM CONTAINER=ALL;
+
+
+-- ============================================================
+-- Done
+-- ============================================================
