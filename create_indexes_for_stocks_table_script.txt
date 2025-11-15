@@ -1,0 +1,16 @@
+-- The table or cluster to be indexed must be in your own schema.
+
+-- You must have the INDEX object privilege on the table to be indexed.
+
+-- You must have the CREATE ANY INDEX system privilege.
+
+
+CREATE INDEX stock_user.STOCKS_SYMBOL_IDX ON stock_user.stocks (symbol) TABLESPACE stocks_index;
+
+CREATE INDEX stock_user.STOCKS_DATE_IDX ON stock_user.stocks (trade_date) TABLESPACE stocks_index;
+
+
+-- Don't need to explicitly create the composite index because when I made the table
+-- I put a unique constraint on the two columns, so there is an implicit index
+-- already on them.
+-- CREATE INDEX stock_user.STOCKS_SYMBOL_DATE_IDX ON stock_user.stocks (symbol, trade_date) TABLESPACE stocks_index;
