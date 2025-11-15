@@ -1,4 +1,4 @@
-# Database Administration Project - Algorithmic Trading Database
+# Database Administration Project - Algorithmic Trading 
 
 ## Purpose of Database
 The database stores historical stock market data to support machine learning models for financial forecasting and predictive analysis. In a production environment, the database would receive real-time updates at 5 minute intervals to maintain current market information.
@@ -14,5 +14,5 @@ Since the database is hosted on the Digital Research Alliance of Canada’s Post
 ## Goals
 - To integrate the database with a BI tool and provides charts of the data.
 - To perform typical DBA tasks such as database configuration, backup and recovery, user management, security, performance tuning and maintenance.
-- sTo document the physical structure, configuration, operational procedures, and security policies of the database.
+- To document the physical structure, configuration, operational procedures, and security policies of the database.
 
