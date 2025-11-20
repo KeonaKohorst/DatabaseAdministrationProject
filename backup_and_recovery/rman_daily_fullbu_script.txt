@@ -1,0 +1,53 @@
+#!/bin/bash
+# -----------------------------------------------------------------------------
+# Script: rman_daily_fullbu_cdb1.sh
+# Purpose: Executes a daily HOT (online) full database backup for the cdb1 container database (CDB).
+#          It is configured to maintain backups needed for a 7-day Point-in-Time Recovery.
+# Execution: Scheduled via cron daily.
+# ADVANTAGE: Zero downtime. Database remains open and available throughout the backup.
+# -----------------------------------------------------------------------------
+
+# --- Environment Setup ---
+export ORACLE_SID=cdb1
+export ORAENV_ASK=NO
+# Load environment variables, assuming oraenv utility is available
+. oraenv
+export NLS_DATE_FORMAT='DD-MON-YYYY HH24:MI:SS'
+
+# --- Logging Configuration ---
+LOG_DIR="$ORACLE_BASE/admin/cdb1/logs/rman"
+LOG_FILE="$LOG_DIR/daily_fullbu_$(date +\%Y\%m\%d).log"
+
+# Create log directory if it doesn't exist
+mkdir -p $LOG_DIR
+
+echo "Starting Daily HOT (Online) Backup (Zero Downtime) at $(date)" | tee -a $LOG_FILE
+
+# --- RMAN Execution (Single Session for Backup and Cleanup) ---
+
+rman target / log=$LOG_FILE append << RMAN_EOF
+set echo on;
+RUN {
+    # 1. Take the HOT Full Backup while the database is OPEN.
+    #    PLUS ARCHIVELOG: Backs up all necessary logs since the last backup.
+    #    DELETE INPUT: Deletes the archivelogs from disk after successful backup.
+    #    This ensures PITR capability is maintained and disk space is freed immediately.
+    BACKUP
+      AS BACKUPSET
+      DATABASE
+      PLUS ARCHIVELOG DELETE INPUT;
+
+    # 2. Cleanup: Delete all backups (fulls and archivelogs) that are no longer
+    #    required to satisfy the configured 7-day RECOVERY WINDOW.
+    DELETE NOPROMPT OBSOLETE;
+}
+EXIT;
+RMAN_EOF
+
+# --- Completion ---
+# Check the status of the RMAN command
+if [ $? -eq 0 ]; then
+    echo "Daily Hot Backup and Cleanup completed successfully at $(date)" | tee -a $LOG_FILE
+else
+    echo "ERROR: Daily Hot Backup failed at $(date). Check logs for details." | tee -a $LOG_FILE
+fi

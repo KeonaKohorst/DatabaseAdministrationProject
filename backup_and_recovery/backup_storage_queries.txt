@@ -1,0 +1,20 @@
+-- Backup Storage Information
+
+
+-- See how much space is allocated to the FRA and how much is used
+SELECT 
+    name, 
+    CEIL(space_limit / 1024 / 1024 / 1024) AS limit_gb,
+    CEIL(space_used / 1024 / 1024 / 1024) AS used_gb,
+    (space_used * 100) / space_limit AS percent_used
+FROM 
+    V$RECOVERY_FILE_DEST;
+
+
+-- See how much a full backup of the db would take up in storage
+-- The final size will be a bit bigger because of archive logs and spfile
+SELECT 
+    SUM(bytes) AS total_datafile_bytes,
+    ROUND(SUM(bytes) / 1024 / 1024 / 1024, 2) AS total_datafile_gb
+FROM 
+    dba_data_files;

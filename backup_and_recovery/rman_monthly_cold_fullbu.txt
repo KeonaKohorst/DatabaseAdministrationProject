@@ -1,0 +1,110 @@
+#!/bin/bash
+#-----------------------------------------------------------------------
+# Script: rman_monthly_stable_coldbu_cdb1.sh
+# Purpose: Executes a stable monthly COLD (offline) full database backup 
+#          for the cdb1 container database (CDB), protected by the KEEP clause.
+# Execution: Scheduled via cron monthly (e.g., on the 1st day).
+# DISADVANTAGE: Requires downtime during the backup process.
+#-----------------------------------------------------------------------
+
+# --- Environment Setup (CRON-Ready Fixes Retained) ---
+export ORACLE_SID=cdb1
+export ORAENV_ASK=NO
+export ORACLE_BASE=/u01/app/oracle
+
+# Determine ORACLE_HOME by reading the system /etc/oratab file.
+export ORACLE_HOME=$(cat /etc/oratab | grep -E "^$ORACLE_SID:" | cut -d ':' -f 2)
+
+# Fallback to a common path if oratab reading fails or is inaccurate
+if [ -z "$ORACLE_HOME" ]; then
+    export ORACLE_HOME="/u01/app/oracle/product/19.0.0/dbhome_1" # Adjust if version changes
+fi
+export PATH=$ORACLE_HOME/bin:$PATH
+export NLS_DATE_FORMAT='DD-MON-YYYY HH24:MI:SS'
+
+
+# --- Configuration for Monthly Backup ---
+# Calculate the date 35 days from now for the KEEP UNTIL TIME clause.
+KEEP_DATE=$(date -d "+35 days" +\%Y-\%m-\%d)
+BACKUP_TAG='STABLE_MONTHLY_BU'
+STABLE_BACKUP_DEST='/u02/rman/cdb1/stable_archives'
+
+# --- Logging Configuration ---
+LOG_DIR="$ORACLE_BASE/admin/cdb1/logs/rman"
+LOG_FILE="$LOG_DIR/monthly_stable_coldbu_$(date +\%Y\%m\%d).log"
+
+# Create log directory if it doesn't exist
+mkdir -p $LOG_DIR
+
+echo "========================================================================" | tee -a $LOG_FILE
+echo "Starting Stable Monthly COLD (Offline) Database Backup at $(date)" | tee -a $LOG_FILE
+echo "New backup will be kept until: ${KEEP_DATE}" | tee -a $LOG_FILE
+echo "========================================================================" | tee -a $LOG_FILE
+
+# --- 1. SHUTDOWN IMMEDIATE (Stop all activity to ensure consistency) ---
+echo "1. Attempting to SHUTDOWN IMMEDIATE..." | tee -a $LOG_FILE
+sqlplus -s / as sysdba << EOF >> $LOG_FILE
+SHUTDOWN IMMEDIATE;
+EXIT;
+EOF
+
+if [ $? -ne 0 ]; then
+    echo "ERROR: Database SHUTDOWN failed. Check logs for details. Exiting backup." | tee -a $LOG_FILE
+    exit 1
+fi
+echo "Database successfully shut down." | tee -a $LOG_FILE
+
+# --- 2. STARTUP MOUNT (Database must be mounted for RMAN) ---
+echo "2. Attempting to STARTUP MOUNT..." | tee -a $LOG_FILE
+sqlplus -s / as sysdba << EOF >> $LOG_FILE
+STARTUP MOUNT;
+EXIT;
+EOF
+
+if [ $? -ne 0 ]; then
+    echo "ERROR: Database STARTUP MOUNT failed. Check logs for details. Exiting backup." | tee -a $LOG_FILE
+    exit 1
+fi
+echo "Database successfully mounted." | tee -a $LOG_FILE
+
+# --- 3. RMAN Execution (COLD Backup and Cleanup) ---
+echo "3. Starting RMAN COLD Backup and Cleanup..." | tee -a $LOG_FILE
+
+rman target / log=$LOG_FILE append << RMAN_EOF
+set echo on;
+RUN {
+    # 1. Cleanup: Delete the previous month's backup with the same tag.
+    DELETE NOPROMPT BACKUP TAG '${BACKUP_TAG}';
+
+    # 2. Create the new stable monthly COLD backup.
+    # KEEP UNTIL TIME: Protects this backup from the daily DELETE OBSOLETE.
+    # Since it is a COLD backup (consistent), LOGS is unnecessary.
+    BACKUP
+      AS BACKUPSET
+      DATABASE
+      FORMAT '${STABLE_BACKUP_DEST}/monthly_stable_bu_%U'
+      TAG '${BACKUP_TAG}'
+      KEEP UNTIL TIME 'TO_DATE('${KEEP_DATE}','YYYY-MM-DD')';
+}
+EXIT;
+RMAN_EOF
+
+RMAN_STATUS=$?
+
+# --- 4. OPEN DATABASE (Restore service) ---
+echo "4. Attempting to ALTER DATABASE OPEN..." | tee -a $LOG_FILE
+sqlplus -s / as sysdba << EOF >> $LOG_FILE
+ALTER DATABASE OPEN;
+EXIT;
+EOF
+
+# Check the status of the RMAN command (RMAN_STATUS is set above)
+if [ $RMAN_STATUS -eq 0 ]; then
+    echo "Stable Monthly COLD Backup finished successfully at $(date)" | tee -a $LOG_FILE
+else
+    echo "ERROR: Monthly COLD Backup failed (RMAN Status: $RMAN_STATUS). Database was restarted. Check logs for details." | tee -a $LOG_FILE
+fi
+
+echo "========================================================================" | tee -a $LOG_FILE
+# --- Completion ---
+exit $RMAN_STATUS

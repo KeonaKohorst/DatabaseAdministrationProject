@@ -1,0 +1,57 @@
+#!/bin/bash
+# -----------------------------------------------------------------------------
+# Script: rman_monthly_stable_bu_cdb1.sh
+# Purpose: Creates the stable monthly HOT archive backup for cdb1, protected by the KEEP clause.
+# Execution: Scheduled via cron monthly (e.g., on the 1st day).
+# ADVANTAGE: Zero downtime. Database remains open and available throughout the backup.
+# -----------------------------------------------------------------------------
+
+# --- Environment Setup ---
+export ORACLE_SID=cdb1
+export ORAENV_ASK=NO
+# Load environment variables, assuming oraenv utility is available
+. oraenv
+export NLS_DATE_FORMAT='DD-MON-YYYY HH24:MI:SS'
+
+# --- Configuration for Monthly Backup ---
+# Calculate the date 35 days from now for the KEEP UNTIL TIME clause.
+KEEP_DATE=$(date -d "+35 days" +\%Y-\%m-\%d)
+BACKUP_TAG='STABLE_MONTHLY_BU'
+
+# --- Logging Configuration ---
+LOG_DIR="$ORACLE_BASE/admin/cdb1/logs/rman"
+LOG_FILE="$LOG_DIR/monthly_stable_bu_$(date +\%Y\%m\%d).log"
+
+# Create log directory if it doesn't exist
+mkdir -p $LOG_DIR
+
+echo "Starting Stable Monthly HOT Backup (Zero Downtime) at $(date)" | tee -a $LOG_FILE
+echo "New backup will be kept until: ${KEEP_DATE}" | tee -a $LOG_FILE
+
+# --- RMAN Execution: Cleanup Previous Archive and Create New Backup (Single Session) ---
+rman target / log=$LOG_FILE append << RMAN_EOF
+set echo on;
+RUN {
+    # 1. Cleanup: Explicitly delete the backup from the previous month.
+    #    This ensures only ONE stable copy is retained.
+    DELETE NOPROMPT BACKUP TAG '${BACKUP_TAG}';
+
+    # 2. Create the new stable monthly HOT backup.
+    #    KEEP UNTIL TIME: Protects this backup from the daily DELETE OBSOLETE.
+    #    LOGS: Includes all necessary archivelogs to make this backup a self-contained restore point.
+    BACKUP
+      AS BACKUPSET
+      DATABASE
+      TAG '${BACKUP_TAG}'
+      KEEP UNTIL TIME 'TO_DATE(\'${KEEP_DATE}\',\'YYYY-MM-DD\')'
+      LOGS;
+}
+EXIT;
+RMAN_EOF
+
+# --- Completion ---
+if [ $? -eq 0 ]; then
+    echo "Stable Monthly Hot Backup finished successfully at $(date)" | tee -a $LOG_FILE
+else
+    echo "ERROR: Monthly Backup failed at $(date)" | tee -a $LOG_FILE
+fi
