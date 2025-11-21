@@ -1,8 +1,8 @@
 #!/bin/bash
 #-----------------------------------------------------------------------
 # Script: rman_monthly_stable_coldbu_cdb1.sh
-# Purpose: Executes a stable monthly COLD (offline) full database backup 
-#          for the cdb1 container database (CDB), protected by the KEEP clause.
+# Purpose: Executes a stable monthly COLD (offline) full COMPRESSED database backup
+#          for the cdb1 container database (CDB), protected by the KEEP clause (3 months).
 # Execution: Scheduled via cron monthly (e.g., on the 1st day).
 # DISADVANTAGE: Requires downtime during the backup process.
 #-----------------------------------------------------------------------
@@ -24,8 +24,8 @@ export NLS_DATE_FORMAT='DD-MON-YYYY HH24:MI:SS'
 
 
 # --- Configuration for Monthly Backup ---
-# Calculate the date 35 days from now for the KEEP UNTIL TIME clause.
-KEEP_DATE=$(date -d "+35 days" +\%Y-\%m-\%d)
+# Calculate the date 90 days (approx. 3 months) from now for the KEEP UNTIL TIME clause.
+KEEP_DATE=$(date -d "+90 days" +\%Y-\%m-\%d)
 BACKUP_TAG='STABLE_MONTHLY_BU'
 STABLE_BACKUP_DEST='/u02/rman/cdb1/stable_archives'
 
@@ -37,8 +37,8 @@ LOG_FILE="$LOG_DIR/monthly_stable_coldbu_$(date +\%Y\%m\%d).log"
 mkdir -p $LOG_DIR
 
 echo "========================================================================" | tee -a $LOG_FILE
-echo "Starting Stable Monthly COLD (Offline) Database Backup at $(date)" | tee -a $LOG_FILE
-echo "New backup will be kept until: ${KEEP_DATE}" | tee -a $LOG_FILE
+echo "Starting Stable Monthly COLD (Offline) COMPRESSED Database Backup at $(date)" | tee -a $LOG_FILE
+echo "New backup will be kept for 3 months, until: ${KEEP_DATE}" | tee -a $LOG_FILE
 echo "========================================================================" | tee -a $LOG_FILE
 
 # --- 1. SHUTDOWN IMMEDIATE (Stop all activity to ensure consistency) ---
@@ -73,18 +73,18 @@ echo "3. Starting RMAN COLD Backup and Cleanup..." | tee -a $LOG_FILE
 rman target / log=$LOG_FILE append << RMAN_EOF
 set echo on;
 RUN {
-    # 1. Cleanup: Delete the previous month's backup with the same tag.
-    DELETE NOPROMPT BACKUP TAG '${BACKUP_TAG}';
+    # remove any old monthly backups
+    DELETE OBSOLETE;
 
     # 2. Create the new stable monthly COLD backup.
-    # KEEP UNTIL TIME: Protects this backup from the daily DELETE OBSOLETE.
-    # Since it is a COLD backup (consistent), LOGS is unnecessary.
+    # ADDED: AS COMPRESSED BACKUPSET
     BACKUP
-      AS BACKUPSET
+      AS COMPRESSED BACKUPSET
       DATABASE
+      PLUS ARCHIVELOG
       FORMAT '${STABLE_BACKUP_DEST}/monthly_stable_bu_%U'
       TAG '${BACKUP_TAG}'
-      KEEP UNTIL TIME 'TO_DATE('${KEEP_DATE}','YYYY-MM-DD')';
+      KEEP UNTIL TIME "TO_DATE('${KEEP_DATE}','YYYY-MM-DD')"; # Ensures the KEEP clause is honored indefinitely against daily/weekly maintenance
 }
 EXIT;
 RMAN_EOF
@@ -100,7 +100,7 @@ EOF
 
 # Check the status of the RMAN command (RMAN_STATUS is set above)
 if [ $RMAN_STATUS -eq 0 ]; then
-    echo "Stable Monthly COLD Backup finished successfully at $(date)" | tee -a $LOG_FILE
+    echo "Stable Monthly COLD COMPRESSED Backup finished successfully at $(date)" | tee -a $LOG_FILE
 else
     echo "ERROR: Monthly COLD Backup failed (RMAN Status: $RMAN_STATUS). Database was restarted. Check logs for details." | tee -a $LOG_FILE
 fi
