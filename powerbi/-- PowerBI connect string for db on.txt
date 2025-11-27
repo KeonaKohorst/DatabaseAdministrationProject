@@ -1,0 +1,13 @@
+-- PowerBI connect string for db on COSC server
+
+
+-- Server:
+10.12.43.235:1521/orclpdb.localdomain
+
+-- Then enter your DB credentials
+-- Switch to "Database" in the lefthand menu
+-- username: 
+c##first letter of first name first three letters of last name
+
+-- password:
+your password
