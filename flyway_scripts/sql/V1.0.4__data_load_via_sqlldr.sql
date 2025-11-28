@@ -1,0 +1,3 @@
+-- V1.0.4__data_load_via_sqlldr.sql
+-- This file serves as a version marker.
+-- The bulk data load was performed externally by sqlldr in the deploys.sh script.
