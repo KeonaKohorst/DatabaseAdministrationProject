@@ -1,0 +1,28 @@
+-- query for space allocated to stocks_data tablespace
+
+SELECT
+    t.tablespace_name,
+    COUNT(d.file_name) AS num_datafiles,
+    -- Convert total bytes to Gigabytes (GB)
+    ROUND(SUM(d.bytes) / 1024 / 1024 / 1024, 2) AS total_size_gb
+FROM
+    dba_tablespaces t
+JOIN
+    dba_data_files d ON t.tablespace_name = d.tablespace_name
+WHERE
+    t.tablespace_name = 'STOCKS_DATA'
+    AND t.contents = 'PERMANENT'
+GROUP BY
+    t.tablespace_name;
+
+
+-- query for space usage in stocks_data tablespace
+
+SELECT
+    'TOTAL USED SPACE' AS tablespace_group,
+    -- Sum the bytes used by all segments in the specified tablespaces
+    ROUND(SUM(bytes) / 1024 / 1024 / 1024, 2) AS used_space_gb
+FROM
+    dba_segments
+WHERE
+    tablespace_name IN ('STOCKS_DATA', 'STOCKS_INDEX');

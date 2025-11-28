@@ -1,0 +1,1 @@
+sqlldr stock_user/pass@ORCLPDB control=stocks.ctl log=stocks.log
