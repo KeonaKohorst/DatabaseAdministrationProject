@@ -1,57 +1,66 @@
 #!/bin/bash
 
 # --- Set Database Variables ---
-DB_URL="jdbc:oracle:thin:@//10.12.43.235:1521/orclpdb.localdomain"
+JDBC_OPTS="?oracle.jdbc.restrictGetTables=false&internal_logon=sysdba"
+# Only the PDB URL is necessary now
+DB_PDB_URL="jdbc:oracle:thin:@//10.12.43.240:1521/orclpdb.localdomain${JDBC_OPTS}" 
+
 DB_USER="sys"
 DB_PASS="pass"
 
-# Flyway command string for reuse
-FLYWAY_CMD="flyway -url=\"$DB_URL\" -user=\"$DB_USER\" -password=\"$DB_PASS\""
+# Flyway configuration required for all runs (SYSDBA login and restricting tables)
+FLYWAY_COMMON_OPTS="-user=$DB_USER -password=$DB_PASS -schemas=FLYWAY_HISTORY" 
 
-# 1. RUN FLYWAY MIGRATIONS (Structural, V1.0.0 to V1.0.3)
-echo "--- 1. Starting Flyway Structural Migration (V1.0.0 to V1.0.3) ---"
-$FLYWAY_CMD migrate
+# --- PHASE 1: PDB Structural Deployment (V1.0.0 to V1.0.2) ---
+echo "--- 1. PHASE 1: Deploying PDB Structure (V1.0.0, V1.0.1, V1.0.2) ---"
+
+# Target the PDB URL, running all scripts up to 1.0.2 (Tables and Indexes)
+# We don't need CDB URL, baselineOnMigrate, or any skip flags anymore!
+flyway -url="$DB_PDB_URL" $FLYWAY_COMMON_OPTS -target="1.0.2" migrate
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Flyway structural migration failed. Aborting."
     exit 1
 fi
 
-# 2. CHECK IF V1.0.4 DATA LOAD IS PENDING
-# Flyway info command returns 0 only if all pending migrations can be applied.
-# We check the history table for V1.0.4, but an easier way is to check the output of info
-if $FLYWAY_CMD info | grep "V1.0.4__data_load_via_sqlldr.sql" | grep -q "Pending"; then
-    echo "--- 2a. V1.0.4 (Data Load) is Pending. Starting SQLLoader ---"
-    
-    # Execute SQLLoader (the external, non-Flyway step)
-    sqlldr stock_user/pass@ORCLPDB control=/opt/dba_deployment/data/stocks.ctl log=/opt/dba_deployment/log/stocks.log
+# --- PHASE 2: External Data Load and V1.0.4 Marker (DIRECT RUN) ---
+echo "--- 2. PHASE 2: External Data Load (V1.0.4) ---"
 
-    if [ $? -ne 0 ]; then
-        echo "ERROR: SQLLoader data load failed. Deployment incomplete."
-        exit 1
-    fi
+# 1. Ensure the 'data' directory (source of .ctl and .csv) is owned by oracle
+chown -R oracle:dba /opt/dba_deployment/data
 
-    echo "SQLLoader data load complete. Applying Flyway marker."
-    
-    # 2b. RUN FLYWAY MIGRATION AGAIN to apply the empty V1.0.4 marker script
-    $FLYWAY_CMD migrate
-    
-    if [ $? -ne 0 ]; then
-        echo "ERROR: Flyway marker application failed. Manual check required."
-        exit 1
-    fi
-else
-    echo "--- 2. V1.0.4 Data Load already applied. Skipping SQLLoader. ---"
+# 2. Ensure the 'log' directory (destination for .log) is owned by oracle and writable
+chown oracle:dba /opt/dba_deployment/log
+chmod 775 /opt/dba_deployment/log
+
+echo "--- 2a. Starting SQLLoader ---"
+
+# Execute SQLLoader using 'su - oracle -c' to switch user and run the command.
+# NOTE: The command string for the '-c' argument must be fully quoted.
+su - oracle -c "sqlldr stock_user/pass@ORCLPDB control=/opt/dba_deployment/data/stocks.ctl log=/opt/dba_deployment/log/stocks.log"
+
+if [ $? -ne 0 ]; then
+    echo "ERROR: SQLLoader data load failed. Deployment incomplete."
+    exit 1
+fi
+
+echo "SQLLoader data load complete. Applying Flyway marker (V1.0.4)."
+
+# 2b. RUN FLYWAY MIGRATION AGAIN to apply the empty V1.0.4 marker script
+# Flyway must stay running as root (or cosc-admin with sudo) for proper environment access
+flyway -url="$DB_PDB_URL" $FLYWAY_COMMON_OPTS migrate
+
+if [ $? -ne 0 ]; then
+    echo "ERROR: Flyway V1.0.4 marker application failed. Manual check required."
+    exit 1
 fi
 
 
-# 3. Database Configuration (Backup, Auditing, Performance)
+# --- PHASE 3: Database Configuration (Backup, Auditing, Performance) ---
 echo "--- 3. Starting Database Configuration ---"
-
 # --- Call separate scripts for configuration ---
 #./setup_backup_config.sh
 #./setup_auditing_config.sh
 #./setup_performance_config.sh
-# Check exit status after each call if strict error handling is needed
 
 echo "--- Deployment complete. ---"
