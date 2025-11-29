@@ -9,10 +9,5 @@ CONFIGURE DEVICE TYPE DISK BACKUP TYPE TO BACKUPSET;
 CONFIGURE RETENTION POLICY TO RECOVERY WINDOW OF 7 DAYS;
 
 
--- IN SQL
-
-ALTER DATABASE ENABLE BLOCK CHANGE TRACKING;
-
-
 -- Location of RMAN scripts, which are scheduled with cron:
-$ORACLE_BASE/admin/orcl/scripts/rman
+-- $ORACLE_BASE/admin/orcl/scripts/rman
