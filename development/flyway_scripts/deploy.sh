@@ -6,7 +6,13 @@ JDBC_OPTS="?oracle.jdbc.restrictGetTables=false&internal_logon=sysdba"
 DB_PDB_URL="jdbc:oracle:thin:@//localhost:1521/orclpdb.localdomain${JDBC_OPTS}" 
 
 DB_USER="sys"
-DB_PASS="pass"
+# --- Prompt for Database Password (DB_PASS) ---
+echo -n "Enter the DB_PASS for user '$DB_USER': "
+# Read the password into the DB_PASS variable without displaying it on the screen (-s)
+# The -r flag prevents backslash escapes from being interpreted
+read -r -s DB_PASS
+echo
+# The password is now stored in $DB_PASS
 
 # Flyway configuration required for all runs (SYSDBA login and restricting tables)
 FLYWAY_COMMON_OPTS="-user=$DB_USER -password=$DB_PASS -schemas=FLYWAY_HISTORY" 
@@ -59,7 +65,7 @@ fi
 # --- PHASE 3: Database Configuration (Backup, Auditing, Performance) ---
 echo "--- 3. Starting Database Configuration ---"
 # --- Call separate scripts for configuration ---
-#./setup_backup_config.sh
+#./setup_backup_config.sh "$DB_PASS" # The DB_PASS is passed as the first argument ($1) to the script
 #./setup_auditing_config.sh
 #./setup_performance_config.sh
 
