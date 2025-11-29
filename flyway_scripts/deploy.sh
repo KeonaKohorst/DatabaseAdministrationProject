@@ -3,7 +3,7 @@
 # --- Set Database Variables ---
 JDBC_OPTS="?oracle.jdbc.restrictGetTables=false&internal_logon=sysdba"
 # Only the PDB URL is necessary now
-DB_PDB_URL="jdbc:oracle:thin:@//10.12.43.240:1521/orclpdb.localdomain${JDBC_OPTS}" 
+DB_PDB_URL="jdbc:oracle:thin:@//localhost:1521/orclpdb.localdomain${JDBC_OPTS}" 
 
 DB_USER="sys"
 DB_PASS="pass"
