@@ -65,7 +65,7 @@ fi
 # --- PHASE 3: Database Configuration (Backup, Auditing, Performance) ---
 echo "--- 3. Starting Database Configuration ---"
 # --- Call separate scripts for configuration ---
-#./setup_backup_config.sh "$DB_PASS" # The DB_PASS is passed as the first argument ($1) to the script
+./backup/setup_backup_config.sh "$DB_PASS" # The DB_PASS is passed as the first argument ($1) to the script
 #./setup_auditing_config.sh
 #./setup_performance_config.sh
 
