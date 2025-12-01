@@ -14,9 +14,9 @@
 # --- 0. Argument and Environment Setup ---
 
 # Define standard Oracle environment paths
-ORACLE_BASE="/opt/oracle"
-ORACLE_SID="ORCL" # Assumed CDB name based on common deployment structure
-PDB_SERVICE_NAME="orclpdb.localdomain"
+ORACLE_BASE="/u01/app/oracle"
+ORACLE_SID="CDB1" 
+CDB_SERVICE_NAME="orcl.localdomain" # Use the CDB service name for FRA configuration
 
 # Paths for the new configuration
 RMAN_SCRIPT_DIR="$ORACLE_BASE/admin/$ORACLE_SID/scripts/rman"
@@ -30,22 +30,34 @@ DEPLOY_BACKUP_SCRIPTS="/opt/dba_deployment/backup/backup_rman_scripts"
 DEPLOY_TEST_SCRIPTS="/opt/dba_deployment/backup/test_backup_scripts"
 
 # Check for the required argument (DB_PASS)
+CONFIG_DB_USER="sys"
+
 if [ -z "$1" ]; then
-    echo "ERROR: DB_PASS argument is missing."
-    echo "Usage: $0 <DB_PASS>"
-    exit 1
+    echo "WARNING: DB_PASS argument was missing. Prompting for password now."
+    
+    # Prompt the user for the password securely
+    echo -n "Enter the DB_PASS for user '$CONFIG_DB_USER': "
+    # Read the password into the CONFIG_DB_PASS variable without displaying it on the screen (-s)
+    read -r -s CONFIG_DB_PASS
+    echo # Print a newline after silent input
+else
+    # Password was provided as an argument, so use it
+    CONFIG_DB_PASS="$1"
 fi
 
-CONFIG_DB_PASS="$1"
-CONFIG_DB_USER="sys"
-CONNECT_STRING="$CONFIG_DB_USER/$CONFIG_DB_PASS@$PDB_SERVICE_NAME as sysdba"
+# CORRECTED: Use the CDB_SERVICE_NAME for connecting to the CDB for FRA config.
+# We will use TNS-less format: user/pass@service_name as sysdba
+CONNECT_STRING="$CONFIG_DB_USER/$CONFIG_DB_PASS@localhost:1521/$CDB_SERVICE_NAME as sysdba"
 
-echo "Starting Oracle Backup Configuration for $PDB_SERVICE_NAME..."
+echo "Starting Oracle Backup Configuration for $CDB_SERVICE_NAME (CDB)..."
 
 # --- Helper Function for Database Commands ---
 function run_sql_as_oracle() {
     local sql_commands="$1"
+    
+    echo "Attempting db connection with string: $CONNECT_STRING"
     # The 'su - oracle -c' command runs the SQL inside the Oracle environment
+    # We use the full connect string for SQL*Plus
     su - oracle -c "sqlplus -S /nolog << EOF
         CONNECT $CONNECT_STRING
         SET ECHO ON
@@ -70,8 +82,8 @@ chown oracle:dba "$FRA_DIR"
 chmod 755 "$FRA_DIR"
 
 SQL_FRA_CONFIG="
--- Ensure we are connected to the PDB
-ALTER SESSION SET CONTAINER=CDB\$ROOT;
+-- FRA configuration must happen at the CDB root level.
+-- Since we connect using the CDB service name, no ALTER SESSION is needed.
 ALTER SYSTEM SET DB_RECOVERY_FILE_DEST='$FRA_DIR' SCOPE=BOTH;
 ALTER SYSTEM SET DB_RECOVERY_FILE_DEST_SIZE=100G SCOPE=BOTH;
 SHOW PARAMETER DB_RECOVERY_FILE_DEST;
@@ -84,7 +96,6 @@ if [ $? -ne 0 ]; then exit 1; fi
 echo "--- 2. Configuring RMAN Policy and Devices ---"
 
 RMAN_CONFIG_SCRIPT="
-CONNECT $CONNECT_STRING
 RUN {
     CONFIGURE CONTROLFILE AUTOBACKUP ON;
     CONFIGURE DEFAULT DEVICE TYPE TO DISK;
@@ -94,8 +105,8 @@ RUN {
 }
 EXIT;
 "
-# RMAN is executed directly as the oracle user
-su - oracle -c "rman target $CONNECT_STRING << EOF
+# CORRECTED RMAN CONNECTION: Use OS authentication (target /) when running via su - oracle -c
+su - oracle -c "rman target / << EOF
 $RMAN_CONFIG_SCRIPT
 EOF"
 
@@ -147,8 +158,6 @@ else
 fi
 
 # --- 7. Create Log Directory for Backup Scripts ---
-# This is a duplicate step for the logs, adjusting the path to match the user's specific request
-# Note: The request used $ORACLE_BASE/admin/cdb1/logs/rman, assuming cdb1 is ORCL, but showing the exact path.
 FINAL_LOG_DIR="$ORACLE_BASE/admin/cdb1/logs/rman"
 echo "--- 7. Creating final RMAN log directory: $FINAL_LOG_DIR ---"
 mkdir -p "$FINAL_LOG_DIR"
