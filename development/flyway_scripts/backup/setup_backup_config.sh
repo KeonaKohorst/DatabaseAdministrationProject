@@ -233,6 +233,12 @@ mkdir -p "$FINAL_LOG_DIR"
 chown oracle:dba "$FINAL_LOG_DIR"
 chmod 775 "$FINAL_LOG_DIR"
 
+# --- 7.5 Create log directory for CRON jobs of backup scripts ---
+echo "--- 7.5 Creating log directory for backup cron jobs: $FINAL_LOG_DIR/cron ---" 
+mkdir -p "$FINAL_LOG_DIR/cron"
+chown oracle:dba "$FINAL_LOG_DIR/cron"
+chmod 775 "$FINAL_LOG_DIR/cron"
+
 
 
 # --- 8. Configuring Crontab for the 'oracle' user (robust method) ---
