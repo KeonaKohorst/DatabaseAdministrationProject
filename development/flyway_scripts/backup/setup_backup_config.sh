@@ -158,7 +158,7 @@ else
 fi
 
 # --- 7. Create Log Directory for Backup Scripts ---
-FINAL_LOG_DIR="$ORACLE_BASE/admin/cdb1/logs/rman"
+FINAL_LOG_DIR="$ORACLE_BASE/admin/$ORACLE_SID/logs/rman"
 echo "--- 7. Creating final RMAN log directory: $FINAL_LOG_DIR ---"
 mkdir -p "$FINAL_LOG_DIR"
 chown oracle:dba "$FINAL_LOG_DIR"
