@@ -39,6 +39,10 @@ chown -R oracle:dba /opt/dba_deployment/data
 chown oracle:dba /opt/dba_deployment/log
 chmod 775 /opt/dba_deployment/log
 
+# 3. Correct the ownership and permissions for the log FILE itself
+chown oracle:dba /opt/dba_deployment/log/stocks.log
+chmod 664 /opt/dba_deployment/log/stocks.log
+
 echo "--- 2a. Starting SQLLoader ---"
 
 # Execute SQLLoader using 'su - oracle -c' to switch user and run the command.
