@@ -66,7 +66,7 @@ fi
 echo "--- 3. Starting Database Configuration ---"
 # --- Call separate scripts for configuration ---
 ./backup/setup_backup_config.sh "$DB_PASS" # The DB_PASS is passed as the first argument ($1) to the script
-#./setup_auditing_config.sh
-#./setup_performance_config.sh
+#./setup_auditing_config.sh "$DB_PASS"
+#./setup_performance_config.sh "$DB_PASS"
 
 echo "--- Deployment complete. ---"

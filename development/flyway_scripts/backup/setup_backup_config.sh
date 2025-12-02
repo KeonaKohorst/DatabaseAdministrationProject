@@ -164,4 +164,64 @@ mkdir -p "$FINAL_LOG_DIR"
 chown oracle:dba "$FINAL_LOG_DIR"
 chmod 775 "$FINAL_LOG_DIR"
 
+
+
+# --- 8. Set up Oracle User Crontab Entries
+echo "--- 8. Configuring Crontab for the 'oracle' user (Idempotent Check) ---"
+
+# Define Paths and Crontab Entries (CRONTAB_ENTRIES variable remains the same)
+# ... (CRONTAB_ENTRIES definition block here, exactly as before) ...
+CRON_JOB_DAILY="$RMAN_SCRIPT_DIR/rman_daily_cold_fullbu_cdb1.sh"
+CRON_JOB_MONTHLY="$RMAN_SCRIPT_DIR/rman_monthly_stable_cold_fullbu_cdb1.sh"
+CRON_JOB_YEARLY="$RMAN_SCRIPT_DIR/rman_yearly_stable_cold_fullbu_cdb1.sh"
+CRON_JOB_CLEANUP="$RMAN_SCRIPT_DIR/rman_log_cleanup.sh"
+RMAN_LOGS_DIR="$FINAL_LOG_DIR" 
+
+# Define the exact entries to be appended (filtered from the main CRONTAB_ENTRIES variable)
+CRONTAB_NEW_ENTRIES=$(cat << EOT
+# =============================================================
+# Oracle RMAN Backup Jobs (Installed by setup_backup_config.sh)
+# =============================================================
+
+# 1. Primary Daily Backup
+0 23 * * * /bin/bash -c '$CRON_JOB_DAILY >> $RMAN_LOGS_DIR/daily_backup_\$(date +\\%Y\\%m\\%d).log 2>&1'
+
+# 2. Stable Monthly Redundant Backup (NOT CURRENTLY ACTIVE)
+#0 0 1 * * $CRON_JOB_MONTHLY >> $RMAN_LOGS_DIR/monthly_backup.log 2>&1
+
+# 3. Yearly Redundant Backup
+0 1 1 1 * /bin/bash -c '$CRON_JOB_YEARLY >> $RMAN_LOGS_DIR/yearly_shell_\$(date +\\%Y\\%m\\%d).log 2>&1'
+
+# 4. Daily Log Cleanup
+0 6 * * * $CRON_JOB_CLEANUP > /dev/null 2>&1
+
+# =============================================================
+EOT
+)
+
+# --- Install Crontab using a single secure stream (Heredoc) ---
+
+# This command uses 'su' to switch user and then runs a block of commands.
+# 1. 'crontab -l 2>/dev/null' lists existing jobs.
+# 2. The output is filtered (grep -v) to remove existing RMAN jobs.
+# 3. The new entries are appended.
+# 4. The whole combined output is then piped back into 'crontab -' to set the new crontab.
+su - oracle -c "
+    (
+    crontab -l 2>/dev/null | \
+        grep -v \"$CRON_JOB_DAILY\" | \
+        grep -v \"$CRON_JOB_MONTHLY\" | \
+        grep -v \"$CRON_JOB_YEARLY\" | \
+        grep -v \"$CRON_JOB_CLEANUP\"
+    echo \"$CRONTAB_NEW_ENTRIES\"
+    ) | crontab -
+"
+if [ $? -eq 0 ]; then
+    echo "SUCCESS: Crontab entries successfully installed and synchronized for the 'oracle' user."
+else
+    echo "ERROR: Failed to install crontab entries for the 'oracle' user. Please check 'su' permissions and 'crontab' access."
+fi
+
+#---------------------------------------------------------
+
 echo "Backup configuration script finished successfully."
