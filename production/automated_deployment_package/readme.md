@@ -8,6 +8,8 @@ This document outlines the directory structure and contents of the `dba_deployme
 
 The files are contained within the root directory `/opt/dba_deployment/`.
 
+/opt/dba_deployment/ ├── sql/ ├── data/ ├── log/ ├── backup/ ├── performance/ ├── auditing/ ├── flyway.conf ├── cleanup.sh ├── install_flyway.sh └── deploy.sh
+
 ## 📋 File and Directory Descriptions
 
 | Path | Type | Description |
