@@ -166,8 +166,8 @@ chmod 775 "$FINAL_LOG_DIR"
 
 
 
-# --- 8. Set up Oracle User Crontab Entries
-echo "--- 8. Configuring Crontab for the 'oracle' user (Idempotent Check) ---"
+# --- 8. Configuring Crontab for the 'oracle' user (robust method) ---
+echo "--- 8. Installing crontab via temporary file ---"
 
 # Define Paths and Crontab Entries (CRONTAB_ENTRIES variable remains the same)
 # ... (CRONTAB_ENTRIES definition block here, exactly as before) ...
@@ -177,50 +177,58 @@ CRON_JOB_YEARLY="$RMAN_SCRIPT_DIR/rman_yearly_stable_cold_fullbu_cdb1.sh"
 CRON_JOB_CLEANUP="$RMAN_SCRIPT_DIR/rman_log_cleanup.sh"
 RMAN_LOGS_DIR="$FINAL_LOG_DIR" 
 
-# Define the exact entries to be appended (filtered from the main CRONTAB_ENTRIES variable)
-CRONTAB_NEW_ENTRIES=$(cat << EOT
+# Create a temp file
+TMP_CRON_FILE=$(mktemp /tmp/oracle_cron.XXXXXX) || { echo "ERROR: mktemp failed"; exit 1; }
+
+# Write a template into the temp file using a single-quoted heredoc so nothing expands (especially $(date ...))
+cat > "$TMP_CRON_FILE" <<'CRON_TEMPLATE'
 # =============================================================
 # Oracle RMAN Backup Jobs (Installed by setup_backup_config.sh)
 # =============================================================
 
 # 1. Primary Daily Backup
-0 23 * * * /bin/bash -c '$CRON_JOB_DAILY >> $RMAN_LOGS_DIR/daily_backup_\$(date +\\%Y\\%m\\%d).log 2>&1'
+0 23 * * * /bin/bash -c 'DAILY_JOB_PATH >> LOGS_DIR/daily_backup_$(date +\%Y\%m\%d).log 2>&1'
 
-# 2. Stable Monthly Redundant Backup (NOT CURRENTLY ACTIVE)
-#0 0 1 * * $CRON_JOB_MONTHLY >> $RMAN_LOGS_DIR/monthly_backup.log 2>&1
+# 2. Stable Monthly Redundant Backup
+0 0 1 * * MONTHLY_JOB_PATH >> LOGS_DIR/monthly_backup_$(date +\%Y\%m\%d).log 2>&1
 
 # 3. Yearly Redundant Backup
-0 1 1 1 * /bin/bash -c '$CRON_JOB_YEARLY >> $RMAN_LOGS_DIR/yearly_shell_\$(date +\\%Y\\%m\\%d).log 2>&1'
+0 1 1 1 * /bin/bash -c 'YEARLY_JOB_PATH >> LOGS_DIR/yearly_backup_$(date +\%Y\%m\%d).log 2>&1'
 
 # 4. Daily Log Cleanup
-0 6 * * * $CRON_JOB_CLEANUP > /dev/null 2>&1
+0 6 * * * CLEANUP_JOB_PATH > /dev/null 2>&1
 
 # =============================================================
-EOT
-)
+CRON_TEMPLATE
 
-# --- Install Crontab using a single secure stream (Heredoc) ---
+# Replace placeholders with actual paths (sed won't execute the $(date ...))
+sed -i \
+    -e "s|DAILY_JOB_PATH|$CRON_JOB_DAILY|g" \
+    -e "s|MONTHLY_JOB_PATH|$CRON_JOB_MONTHLY|g" \
+    -e "s|YEARLY_JOB_PATH|$CRON_JOB_YEARLY|g" \
+    -e "s|CLEANUP_JOB_PATH|$CRON_JOB_CLEANUP|g" \
+    -e "s|LOGS_DIR|$RMAN_LOGS_DIR|g" \
+    "$TMP_CRON_FILE"
 
-# This command uses 'su' to switch user and then runs a block of commands.
-# 1. 'crontab -l 2>/dev/null' lists existing jobs.
-# 2. The output is filtered (grep -v) to remove existing RMAN jobs.
-# 3. The new entries are appended.
-# 4. The whole combined output is then piped back into 'crontab -' to set the new crontab.
-su - oracle -c "
-    (
-    crontab -l 2>/dev/null | \
-        grep -v \"$CRON_JOB_DAILY\" | \
-        grep -v \"$CRON_JOB_MONTHLY\" | \
-        grep -v \"$CRON_JOB_YEARLY\" | \
-        grep -v \"$CRON_JOB_CLEANUP\"
-    echo \"$CRONTAB_NEW_ENTRIES\"
-    ) | crontab -
-"
-if [ $? -eq 0 ]; then
-    echo "SUCCESS: Crontab entries successfully installed and synchronized for the 'oracle' user."
+# (Optional) show the file locally for debugging
+echo "----- Generated crontab file (preview) -----"
+sed -n '1,200p' "$TMP_CRON_FILE"
+echo "-------------------------------------------"
+
+# Install the crontab as the oracle user by pointing crontab to the file.
+# This reads the file contents literally; crontab will not expand $(date ...).
+chmod 644 "$TMP_CRON_FILE"
+su - oracle -c "crontab $TMP_CRON_FILE"
+RC=$?
+
+if [ $RC -eq 0 ]; then
+    echo "SUCCESS: Crontab installed for oracle user."
 else
-    echo "ERROR: Failed to install crontab entries for the 'oracle' user. Please check 'su' permissions and 'crontab' access."
+    echo "ERROR: Failed to install crontab (rc=$RC). Please check su/crontab permissions."
 fi
+
+# Clean up
+rm -f "$TMP_CRON_FILE"
 
 #---------------------------------------------------------
 

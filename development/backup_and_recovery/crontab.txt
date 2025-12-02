@@ -1,0 +1,17 @@
+# Crontab Entry for the ORACLE user - backup and recovery
+
+# 1. Primary Daily Backup (Runs at 11:00 PM every day)
+# Minute(0) Hour(23) DayMonth(*) Month(*) DayWeek(*)
+0 23 * * * /bin/bash -c '/u01/app/oracle/admin/orcl/scripts/rman/rman_daily_cold_fullbu_cdb1.sh >> /u01/app/oracle/admin/orcl/logs/rman/daily_backup_$(date +\%Y\%m\%d).log 2>&1'
+
+# 2. Stable Monthly Redundant Backup (Runs at 12:00 AM on the 1st of every month)
+# Minute(0) Hour(0) DayMonth(1) Month(*) DayWeek(*)
+0 0 1 * * /u01/app/oracle/admin/orcl/scripts/rman/rman_monthly_stable_cold_fullbu_cdb1.sh >> /u01/app/oracle/admin/orcl/logs/rman/monthly_backup_$(date +\%Y\%m\%d).log 2>&1
+
+# 3. Yearly Redundant Backup (Runs at 1:00 AM on January 1st)
+# Minute(0) Hour(1) DayMonth(1) Month(1) DayWeek(*)
+0 1 1 1 * /bin/bash -c '/u01/app/oracle/admin/orcl/scripts/rman/rman_yearly_stable_cold_fullbu_cdb1.sh >> /u01/app/oracle/admin/orcl/logs/rman/yearly_backup_$(date +\%Y\%m\%d).log 2>&1'
+
+# 4. Daily Log Cleanup (Runs at 6:00 AM every day)
+# Minute(0) Hour(6) DayMonth(*) Month(*) DayWeek(*)
+0 6 * * * /u01/app/oracle/admin/orcl/scripts/rman/rman_log_cleanup.sh > /dev/null 2>&1
