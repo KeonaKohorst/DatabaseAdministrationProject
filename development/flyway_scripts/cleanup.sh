@@ -72,6 +72,22 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+
+echo "--- 2b. Flyway history reset complete. ---"
+
+
+echo "--- 3. Clearing 'oracle' user crontab entries ---"
+
+# The command 'crontab -r' permanently removes the current crontab file.
+su - oracle -c "crontab -r"
+
+if [ $? -eq 0 ]; then
+    echo "SUCCESS: The 'oracle' user's crontab has been cleared."
+else
+    # The command fails if crontab is already empty, so treat a non-zero exit as a warning unless it's critical.
+    echo "WARNING: Failed to clear crontab (it might already be empty or permissions are incorrect). Proceeding."
+fi
+
 echo "--- 3. Cleanup Complete ---"
 echo "Database $SERVICE_NAME is now clean and ready for redeployment."
 echo "Execution context has remained as 'root'."
