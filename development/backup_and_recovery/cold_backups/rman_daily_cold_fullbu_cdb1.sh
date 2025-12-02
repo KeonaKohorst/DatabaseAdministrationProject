@@ -1,13 +1,13 @@
 #!/bin/bash
 #-----------------------------------------------------------------------
-# Script: rman_yearly_stable_cold_fullbu_cdb1.sh
-# Purpose: Executes a stable YEARLY COLD (offline) full compressed database backup
-#          for the cdb1 container database (CDB), protected by the KEEP clause.
-# Execution: Scheduled via cron yearly (e.g., on Jan 1st).
+# Script: rman_daily_coldbu_cdb1.sh
+# Purpose: Executes a daily COLD (offline) full database backup for the cdb1 
+#          container database (CDB). This ensures a consistent backup state.
+# Execution: Scheduled via cron daily.
 # DISADVANTAGE: Requires downtime during the backup process.
 #-----------------------------------------------------------------------
 
-# --- Environment Setup ---
+# --- Environment Setup (CRON-Ready Fixes Retained) ---
 export ORACLE_SID=cdb1
 export ORAENV_ASK=NO
 export ORACLE_BASE=/u01/app/oracle
@@ -22,29 +22,16 @@ fi
 export PATH=$ORACLE_HOME/bin:$PATH
 export NLS_DATE_FORMAT='DD-MON-YYYY HH24:MI:SS'
 
-
-# --- Configuration for Yearly Backup ---
-# Calculate the date 2 years from now for the KEEP UNTIL TIME clause.
-YEARS_TO_KEEP=2
-# Using 365.25 days/year for a slightly more accurate date
-DAYS_TO_KEEP=$((YEARS_TO_KEEP * 365 + YEARS_TO_KEEP / 4))
-KEEP_DATE=$(date -d "+$DAYS_TO_KEEP days" +\%Y-\%m-\%d)
-
-BACKUP_TAG='STABLE_YEARLY_BU'
-# New destination path for yearly archives
-STABLE_BACKUP_DEST='/u02/rman/cdb1/stable_archives/yearly'
-
 # --- Logging Configuration ---
-LOG_DIR="$ORACLE_BASE/admin/cdb1/logs/rman"
-LOG_FILE="$LOG_DIR/yearly_stable_coldbu_$(date +\%Y\%m\%d).log"
+LOG_DIR="$ORACLE_BASE/admin/$ORACLE_SID/logs/rman"
+LOG_FILE="$LOG_DIR/daily_coldbu_$(date +\%Y\%m\%d).log"
 
-# Create log directory and the yearly destination if they don't exist
+# Create log directory if it doesn't exist
 mkdir -p $LOG_DIR
-mkdir -p $STABLE_BACKUP_DEST
 
 echo "========================================================================" | tee -a $LOG_FILE
-echo "Starting Stable YEARLY COLD (Offline) COMPRESSED Database Backup at $(date)" | tee -a $LOG_FILE
-echo "New backup will be kept for ${YEARS_TO_KEEP} years, until: ${KEEP_DATE}" | tee -a $LOG_FILE
+echo "Starting Daily COLD (Offline) Database Backup at $(date)" | tee -a $LOG_FILE
+echo "Estimated Downtime: Database will be down for SHUTDOWN, BACKUP, and STARTUP." | tee -a $LOG_FILE
 echo "========================================================================" | tee -a $LOG_FILE
 
 # --- 1. SHUTDOWN IMMEDIATE (Stop all activity to ensure consistency) ---
@@ -54,6 +41,7 @@ SHUTDOWN IMMEDIATE;
 EXIT;
 EOF
 
+# Check if shutdown was successful (status must be 0)
 if [ $? -ne 0 ]; then
     echo "ERROR: Database SHUTDOWN failed. Check logs for details. Exiting backup." | tee -a $LOG_FILE
     exit 1
@@ -79,16 +67,15 @@ echo "3. Starting RMAN COLD Backup and Cleanup..." | tee -a $LOG_FILE
 rman target / log=$LOG_FILE append << RMAN_EOF
 set echo on;
 RUN {
-
-    # 2. Perform the STABLE YEARLY COLD backup with KEEP protection.
+    # Take the COLD Full Backup while the database is mounted. 
+    # This backup is guaranteed to be consistent, so no archivelogs are needed.
     BACKUP
-      AS COMPRESSED BACKUPSET
-      DATABASE
-      PLUS ARCHIVELOG
-      FORMAT '${STABLE_BACKUP_DEST}/yearly_stable_bu_%U'
-      TAG '${BACKUP_TAG}'
-      KEEP UNTIL TIME "TO_DATE('${KEEP_DATE}','YYYY-MM-DD')";
+      AS BACKUPSET
+      DATABASE;
 
+    # Cleanup: Delete all backups (fulls and archivelogs) that are no longer
+    # required to satisfy the configured 7-day RECOVERY WINDOW.
+    DELETE NOPROMPT OBSOLETE;
 }
 EXIT;
 RMAN_EOF
@@ -102,15 +89,13 @@ ALTER DATABASE OPEN;
 EXIT;
 EOF
 
-if [ $? -ne 0 ]; then
-    echo "ERROR: Database ALTER DATABASE OPEN failed. Service may still be down." | tee -a $LOG_FILE
-fi
-
-if [ $RMAN_STATUS -ne 0 ]; then
-    echo "ERROR: RMAN backup failed with status $RMAN_STATUS. Check log file: $LOG_FILE" | tee -a $LOG_FILE
-    exit 1
+# Check the status of the RMAN command (RMAN_STATUS is set above)
+if [ $RMAN_STATUS -eq 0 ]; then
+    echo "Daily COLD Backup and Cleanup completed successfully at $(date)" | tee -a $LOG_FILE
 else
-    echo "SUCCESS: Stable yearly cold compressed backup completed successfully and the database is OPEN." | tee -a $LOG_FILE
+    echo "ERROR: Daily COLD Backup failed (RMAN Status: $RMAN_STATUS). Database was restarted. Check logs for details." | tee -a $LOG_FILE
 fi
 
-exit 0
+echo "========================================================================" | tee -a $LOG_FILE
+# --- Completion ---
+exit $RMAN_STATUS

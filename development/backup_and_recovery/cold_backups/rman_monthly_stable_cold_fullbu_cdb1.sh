@@ -1,9 +1,9 @@
 #!/bin/bash
 #-----------------------------------------------------------------------
-# Script: rman_daily_coldbu_cdb1.sh
-# Purpose: Executes a daily COLD (offline) full database backup for the cdb1 
-#          container database (CDB). This ensures a consistent backup state.
-# Execution: Scheduled via cron daily.
+# Script: rman_monthly_stable_coldbu_cdb1.sh
+# Purpose: Executes a stable monthly COLD (offline) full COMPRESSED database backup
+#          for the cdb1 container database (CDB), protected by the KEEP clause (3 months).
+# Execution: Scheduled via cron monthly (e.g., on the 1st day).
 # DISADVANTAGE: Requires downtime during the backup process.
 #-----------------------------------------------------------------------
 
@@ -22,16 +22,23 @@ fi
 export PATH=$ORACLE_HOME/bin:$PATH
 export NLS_DATE_FORMAT='DD-MON-YYYY HH24:MI:SS'
 
+
+# --- Configuration for Monthly Backup ---
+# Calculate the date 90 days (approx. 3 months) from now for the KEEP UNTIL TIME clause.
+KEEP_DATE=$(date -d "+90 days" +\%Y-\%m-\%d)
+BACKUP_TAG='STABLE_MONTHLY_BU'
+STABLE_BACKUP_DEST="/u02/rman/$ORACLE_SID/stable_archives"
+
 # --- Logging Configuration ---
-LOG_DIR="$ORACLE_BASE/admin/cdb1/logs/rman"
-LOG_FILE="$LOG_DIR/daily_coldbu_$(date +\%Y\%m\%d).log"
+LOG_DIR="$ORACLE_BASE/admin/$ORACLE_SID/logs/rman"
+LOG_FILE="$LOG_DIR/monthly_stable_coldbu_$(date +\%Y\%m\%d).log"
 
 # Create log directory if it doesn't exist
 mkdir -p $LOG_DIR
 
 echo "========================================================================" | tee -a $LOG_FILE
-echo "Starting Daily COLD (Offline) Database Backup at $(date)" | tee -a $LOG_FILE
-echo "Estimated Downtime: Database will be down for SHUTDOWN, BACKUP, and STARTUP." | tee -a $LOG_FILE
+echo "Starting Stable Monthly COLD (Offline) COMPRESSED Database Backup at $(date)" | tee -a $LOG_FILE
+echo "New backup will be kept for 3 months, until: ${KEEP_DATE}" | tee -a $LOG_FILE
 echo "========================================================================" | tee -a $LOG_FILE
 
 # --- 1. SHUTDOWN IMMEDIATE (Stop all activity to ensure consistency) ---
@@ -41,7 +48,6 @@ SHUTDOWN IMMEDIATE;
 EXIT;
 EOF
 
-# Check if shutdown was successful (status must be 0)
 if [ $? -ne 0 ]; then
     echo "ERROR: Database SHUTDOWN failed. Check logs for details. Exiting backup." | tee -a $LOG_FILE
     exit 1
@@ -67,15 +73,18 @@ echo "3. Starting RMAN COLD Backup and Cleanup..." | tee -a $LOG_FILE
 rman target / log=$LOG_FILE append << RMAN_EOF
 set echo on;
 RUN {
-    # Take the COLD Full Backup while the database is mounted. 
-    # This backup is guaranteed to be consistent, so no archivelogs are needed.
-    BACKUP
-      AS BACKUPSET
-      DATABASE;
+    # remove any old monthly backups
+    DELETE OBSOLETE;
 
-    # Cleanup: Delete all backups (fulls and archivelogs) that are no longer
-    # required to satisfy the configured 7-day RECOVERY WINDOW.
-    DELETE NOPROMPT OBSOLETE;
+    # 2. Create the new stable monthly COLD backup.
+    # ADDED: AS COMPRESSED BACKUPSET
+    BACKUP
+      AS COMPRESSED BACKUPSET
+      DATABASE
+      PLUS ARCHIVELOG
+      FORMAT '${STABLE_BACKUP_DEST}/monthly_stable_bu_%U'
+      TAG '${BACKUP_TAG}'
+      KEEP UNTIL TIME "TO_DATE('${KEEP_DATE}','YYYY-MM-DD')"; # Ensures the KEEP clause is honored indefinitely against daily/weekly maintenance
 }
 EXIT;
 RMAN_EOF
@@ -91,9 +100,9 @@ EOF
 
 # Check the status of the RMAN command (RMAN_STATUS is set above)
 if [ $RMAN_STATUS -eq 0 ]; then
-    echo "Daily COLD Backup and Cleanup completed successfully at $(date)" | tee -a $LOG_FILE
+    echo "Stable Monthly COLD COMPRESSED Backup finished successfully at $(date)" | tee -a $LOG_FILE
 else
-    echo "ERROR: Daily COLD Backup failed (RMAN Status: $RMAN_STATUS). Database was restarted. Check logs for details." | tee -a $LOG_FILE
+    echo "ERROR: Monthly COLD Backup failed (RMAN Status: $RMAN_STATUS). Database was restarted. Check logs for details." | tee -a $LOG_FILE
 fi
 
 echo "========================================================================" | tee -a $LOG_FILE

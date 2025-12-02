@@ -30,7 +30,7 @@ export NLS_DATE_FORMAT='DD-MON-YYYY HH24:MI:SS'
 
 
 # --- Logging Configuration ---
-LOG_DIR="$ORACLE_BASE/admin/cdb1/logs/rman"
+LOG_DIR="$ORACLE_BASE/admin/$ORACLE_SID/logs/rman"
 LOG_FILE="$LOG_DIR/monthly_restore_sim_$(date +\%Y\%m\%d_\%H\%M\%S).log"
 mkdir -p $LOG_DIR
 

@@ -15,7 +15,7 @@
 
 # Define standard Oracle environment paths
 ORACLE_BASE="/u01/app/oracle"
-ORACLE_SID="CDB1" 
+ORACLE_SID="cdb1" 
 CDB_SERVICE_NAME="orcl.localdomain" # Use the CDB service name for FRA configuration
 
 # Paths for the new configuration
@@ -23,7 +23,7 @@ RMAN_SCRIPT_DIR="$ORACLE_BASE/admin/$ORACLE_SID/scripts/rman"
 RMAN_LOG_DIR="$ORACLE_BASE/admin/$ORACLE_SID/logs/rman"
 TEST_SCRIPT_DIR="$ORACLE_BASE/admin/$ORACLE_SID/scripts/test_scripts/backup_recovery_tests"
 FRA_DIR="$ORACLE_BASE/oradata/$ORACLE_SID/FRA"
-ARCHIVE_DIR="/u02/rman/cdb1/stable_archives"
+ARCHIVE_DIR="/u02/rman/$ORACLE_SID/stable_archives"
 
 # Source directories for deployment scripts (as provided in the request)
 DEPLOY_BACKUP_SCRIPTS="/opt/dba_deployment/backup/backup_rman_scripts"
@@ -45,7 +45,6 @@ else
     CONFIG_DB_PASS="$1"
 fi
 
-# CORRECTED: Use the CDB_SERVICE_NAME for connecting to the CDB for FRA config.
 # We will use TNS-less format: user/pass@service_name as sysdba
 CONNECT_STRING="$CONFIG_DB_USER/$CONFIG_DB_PASS@localhost:1521/$CDB_SERVICE_NAME as sysdba"
 
@@ -92,8 +91,78 @@ SHOW PARAMETER DB_RECOVERY_FILE_DEST_SIZE;
 run_sql_as_oracle "$SQL_FRA_CONFIG"
 if [ $? -ne 0 ]; then exit 1; fi
 
-# --- 2. Configure RMAN Settings ---
-echo "--- 2. Configuring RMAN Policy and Devices ---"
+# --- 2. Enable ARCHIVELOG mode and Configure RMAN Settings ---
+echo "--- 2. Checking and Enabling ARCHIVELOG Mode ---"
+
+# --- Define a simple helper for LOCAL OS auth (needed for startup/shutdown) ---
+# We will use this block structure repeatedly in this section.
+function run_local_sql_as_oracle() {
+    local sql_commands="$1"
+    su - oracle -c "sqlplus -S / as sysdba << EOF
+        SET ECHO ON
+        SET FEEDBACK ON
+        $sql_commands
+        EXIT;
+EOF"
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Local SQL execution failed."
+        return 1
+    fi
+    return 0
+}
+# -------------------------------------------------------------------------------
+
+
+# Check current mode by looking for the ARCHIVELOG string.
+SQL_CHECK_MODE="SELECT LOG_MODE FROM V\$DATABASE;"
+echo "Current Database Mode:"
+
+# Execute SQL via run_sql_as_oracle helper (This can use TNS as the DB is OPEN now)
+su - oracle -c "sqlplus -S /nolog << EOF
+	CONNECT $CONNECT_STRING
+	SET PAGESIZE 0 FEEDBACK OFF HEADING OFF
+	$SQL_CHECK_MODE
+	EXIT;
+EOF" | grep 'ARCHIVELOG' > /dev/null 2>&1
+
+# If grep was successful (ARCHIVELOG found), the return code ($?) is 0.
+if [ $? -eq 0 ]; then
+	echo "Database is already in ARCHIVELOG mode. Skipping change."
+else
+	echo "Database is in NOARCHIVELOG mode. Initiating ARCHIVELOG setup..."
+
+	# 1. Shutdown Immediate (Using LOCAL OS AUTH)
+	SQL_SHUTDOWN="SHUTDOWN IMMEDIATE;"
+	echo "Shutting down the database..."
+	run_local_sql_as_oracle "$SQL_SHUTDOWN"
+	if [ $? -ne 0 ]; then echo "ERROR: Database shutdown failed. Exiting."; exit 1; fi
+
+	# 2. Startup Mount (Using LOCAL OS AUTH)
+	SQL_STARTUP_MOUNT="STARTUP MOUNT;"
+	echo "Starting up in MOUNT mode..."
+	run_local_sql_as_oracle "$SQL_STARTUP_MOUNT"
+	if [ $? -ne 0 ]; then exit 1; fi
+
+	# 3. Enable ARCHIVELOG (Using LOCAL OS AUTH)
+	SQL_ARCHIVELOG="
+	ALTER DATABASE ARCHIVELOG;
+	ALTER SYSTEM SET LOG_ARCHIVE_DEST_1='LOCATION=USE_DB_RECOVERY_FILE_DEST' SCOPE=BOTH;
+	"
+	echo "Enabling ARCHIVELOG mode and setting archive destination to FRA..."
+	run_local_sql_as_oracle "$SQL_ARCHIVELOG"
+	if [ $? -ne 0 ]; then exit 1; fi
+
+	# 4. Open Database (Using LOCAL OS AUTH)
+	SQL_OPEN="ALTER DATABASE OPEN;"
+	echo "Opening the database..."
+	run_local_sql_as_oracle "$SQL_OPEN"
+	if [ $? -ne 0 ]; then exit 1; fi
+
+	echo "ARCHIVELOG mode successfully enabled."
+fi
+
+
+echo "--- 2.5. Configuring RMAN Policy and Devices ---"
 
 RMAN_CONFIG_SCRIPT="
 RUN {
@@ -175,7 +244,7 @@ CRON_JOB_DAILY="$RMAN_SCRIPT_DIR/rman_daily_cold_fullbu_cdb1.sh"
 CRON_JOB_MONTHLY="$RMAN_SCRIPT_DIR/rman_monthly_stable_cold_fullbu_cdb1.sh"
 CRON_JOB_YEARLY="$RMAN_SCRIPT_DIR/rman_yearly_stable_cold_fullbu_cdb1.sh"
 CRON_JOB_CLEANUP="$RMAN_SCRIPT_DIR/rman_log_cleanup.sh"
-RMAN_LOGS_DIR="$FINAL_LOG_DIR" 
+RMAN_LOGS_DIR="$FINAL_LOG_DIR/cron" 
 
 # Create a temp file
 TMP_CRON_FILE=$(mktemp /tmp/oracle_cron.XXXXXX) || { echo "ERROR: mktemp failed"; exit 1; }

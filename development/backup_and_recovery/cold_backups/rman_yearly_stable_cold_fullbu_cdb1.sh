@@ -1,13 +1,13 @@
 #!/bin/bash
 #-----------------------------------------------------------------------
-# Script: rman_monthly_stable_coldbu_cdb1.sh
-# Purpose: Executes a stable monthly COLD (offline) full COMPRESSED database backup
-#          for the cdb1 container database (CDB), protected by the KEEP clause (3 months).
-# Execution: Scheduled via cron monthly (e.g., on the 1st day).
+# Script: rman_yearly_stable_cold_fullbu_cdb1.sh
+# Purpose: Executes a stable YEARLY COLD (offline) full compressed database backup
+#          for the cdb1 container database (CDB), protected by the KEEP clause.
+# Execution: Scheduled via cron yearly (e.g., on Jan 1st).
 # DISADVANTAGE: Requires downtime during the backup process.
 #-----------------------------------------------------------------------
 
-# --- Environment Setup (CRON-Ready Fixes Retained) ---
+# --- Environment Setup ---
 export ORACLE_SID=cdb1
 export ORAENV_ASK=NO
 export ORACLE_BASE=/u01/app/oracle
@@ -23,22 +23,28 @@ export PATH=$ORACLE_HOME/bin:$PATH
 export NLS_DATE_FORMAT='DD-MON-YYYY HH24:MI:SS'
 
 
-# --- Configuration for Monthly Backup ---
-# Calculate the date 90 days (approx. 3 months) from now for the KEEP UNTIL TIME clause.
-KEEP_DATE=$(date -d "+90 days" +\%Y-\%m-\%d)
-BACKUP_TAG='STABLE_MONTHLY_BU'
-STABLE_BACKUP_DEST='/u02/rman/cdb1/stable_archives'
+# --- Configuration for Yearly Backup ---
+# Calculate the date 2 years from now for the KEEP UNTIL TIME clause.
+YEARS_TO_KEEP=2
+# Using 365.25 days/year for a slightly more accurate date
+DAYS_TO_KEEP=$((YEARS_TO_KEEP * 365 + YEARS_TO_KEEP / 4))
+KEEP_DATE=$(date -d "+$DAYS_TO_KEEP days" +\%Y-\%m-\%d)
+
+BACKUP_TAG='STABLE_YEARLY_BU'
+# New destination path for yearly archives
+STABLE_BACKUP_DEST="/u02/rman/$ORACLE_SID/stable_archives/yearly"
 
 # --- Logging Configuration ---
-LOG_DIR="$ORACLE_BASE/admin/cdb1/logs/rman"
-LOG_FILE="$LOG_DIR/monthly_stable_coldbu_$(date +\%Y\%m\%d).log"
+LOG_DIR="$ORACLE_BASE/admin/$ORACLE_SID/logs/rman"
+LOG_FILE="$LOG_DIR/yearly_stable_coldbu_$(date +\%Y\%m\%d).log"
 
-# Create log directory if it doesn't exist
+# Create log directory and the yearly destination if they don't exist
 mkdir -p $LOG_DIR
+mkdir -p $STABLE_BACKUP_DEST
 
 echo "========================================================================" | tee -a $LOG_FILE
-echo "Starting Stable Monthly COLD (Offline) COMPRESSED Database Backup at $(date)" | tee -a $LOG_FILE
-echo "New backup will be kept for 3 months, until: ${KEEP_DATE}" | tee -a $LOG_FILE
+echo "Starting Stable YEARLY COLD (Offline) COMPRESSED Database Backup at $(date)" | tee -a $LOG_FILE
+echo "New backup will be kept for ${YEARS_TO_KEEP} years, until: ${KEEP_DATE}" | tee -a $LOG_FILE
 echo "========================================================================" | tee -a $LOG_FILE
 
 # --- 1. SHUTDOWN IMMEDIATE (Stop all activity to ensure consistency) ---
@@ -73,18 +79,16 @@ echo "3. Starting RMAN COLD Backup and Cleanup..." | tee -a $LOG_FILE
 rman target / log=$LOG_FILE append << RMAN_EOF
 set echo on;
 RUN {
-    # remove any old monthly backups
-    DELETE OBSOLETE;
 
-    # 2. Create the new stable monthly COLD backup.
-    # ADDED: AS COMPRESSED BACKUPSET
+    # 2. Perform the STABLE YEARLY COLD backup with KEEP protection.
     BACKUP
       AS COMPRESSED BACKUPSET
       DATABASE
       PLUS ARCHIVELOG
-      FORMAT '${STABLE_BACKUP_DEST}/monthly_stable_bu_%U'
+      FORMAT '${STABLE_BACKUP_DEST}/yearly_stable_bu_%U'
       TAG '${BACKUP_TAG}'
-      KEEP UNTIL TIME "TO_DATE('${KEEP_DATE}','YYYY-MM-DD')"; # Ensures the KEEP clause is honored indefinitely against daily/weekly maintenance
+      KEEP UNTIL TIME "TO_DATE('${KEEP_DATE}','YYYY-MM-DD')";
+
 }
 EXIT;
 RMAN_EOF
@@ -98,13 +102,15 @@ ALTER DATABASE OPEN;
 EXIT;
 EOF
 
-# Check the status of the RMAN command (RMAN_STATUS is set above)
-if [ $RMAN_STATUS -eq 0 ]; then
-    echo "Stable Monthly COLD COMPRESSED Backup finished successfully at $(date)" | tee -a $LOG_FILE
-else
-    echo "ERROR: Monthly COLD Backup failed (RMAN Status: $RMAN_STATUS). Database was restarted. Check logs for details." | tee -a $LOG_FILE
+if [ $? -ne 0 ]; then
+    echo "ERROR: Database ALTER DATABASE OPEN failed. Service may still be down." | tee -a $LOG_FILE
 fi
 
-echo "========================================================================" | tee -a $LOG_FILE
-# --- Completion ---
-exit $RMAN_STATUS
+if [ $RMAN_STATUS -ne 0 ]; then
+    echo "ERROR: RMAN backup failed with status $RMAN_STATUS. Check log file: $LOG_FILE" | tee -a $LOG_FILE
+    exit 1
+else
+    echo "SUCCESS: Stable yearly cold compressed backup completed successfully and the database is OPEN." | tee -a $LOG_FILE
+fi
+
+exit 0
