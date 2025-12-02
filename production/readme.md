@@ -60,4 +60,13 @@ cd /opt/dba_deployment
 
 ## Troubleshooting
 
-If the deployment process fails, please refer to the section of this document (or a linked document) titled "Cleaning After Automated Deployment Failure"
+If the deployment process fails, the **cleanup.sh** script in the /opt/dba_deployment directory performs a targeted reset of the database. It only removes items that would block a fresh run of deploy.sh (e.g., old users, tablespaces, and Flyway history).
+
+It intentionally leaves non-interfering settings in place. For instance, the backup configuration remains (except for the crontab entries) because it's designed to be safely run multiple times without causing conflicts.
+
+Execute the script, fix the error, and then re-run deploy.sh:
+```bash
+./cleanup.sh
+> Fix the error which caused deployment to fail
+./deploy.sh
+```
