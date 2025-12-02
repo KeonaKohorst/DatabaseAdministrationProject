@@ -8,7 +8,9 @@ This guide provides step-by-step instructions on how to download the automated d
 
 1.  Navigate to the primary installation directory:
     
+    ```bash
     cd /opt
+    ```
 
 2.  Unzip the automated deployment package (`dba_deployment.zip`) obtained from the GitHub repository [6].
     
@@ -56,8 +58,6 @@ cd /opt/dba_deployment
 
 ---
 
-## ❌ Troubleshooting
+## Troubleshooting
 
-If the deployment process fails, please refer to the section of this document (or a linked document) titled:
-
-> "Cleaning After Automated Deployment Failure"
+If the deployment process fails, please refer to the section of this document (or a linked document) titled "Cleaning After Automated Deployment Failure"
