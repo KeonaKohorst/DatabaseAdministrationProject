@@ -5,7 +5,7 @@ DB_USER="sys"
 ORACLE_BASE="/u01/app/oracle"
 ORACLE_SID="cdb1" 
 CDB_SERVICE_NAME="orcl.localdomain" 
-CONNECT_STRING="$DB_USER/%DB_PASS_REPLACE%@localhost:1521/$CDB_SERVICE_NAME as sysdba" 
+CONNECT_STRING="$DB_USER/%CONFIG_DB_PASS_REPLACE%@localhost:1521/$CDB_SERVICE_NAME as sysdba" 
 
 # Paths to verify
 FRA_DIR="$ORACLE_BASE/oradata/$ORACLE_SID/FRA"
@@ -25,10 +25,21 @@ EXPECTED_TEST_SCRIPTS=(
     "simulate_restore_from_monthly.sh"
 )
 
-# --- Prompt for Database Password (DB_PASS) ---
-echo -n "Enter the DB_PASS for user '$DB_USER' for connection to '$CDB_SERVICE_NAME': "
-read -r -s DB_PASS
-echo
+# Check for the required argument (DB_PASS)
+CONFIG_DB_USER="sys"
+
+if [ -z "$1" ]; then
+    echo "WARNING: DB_PASS argument was missing. Prompting for password now."
+    
+    # Prompt the user for the password securely
+    echo -n "Enter the DB_PASS for user '$CONFIG_DB_USER': "
+    # Read the password into the CONFIG_DB_PASS variable without displaying it on the screen (-s)
+    read -r -s CONFIG_DB_PASS
+    echo # Print a newline after silent input
+else
+    # Password was provided as an argument, so use it
+    CONFIG_DB_PASS="$1"
+fi
 
 echo "--- Starting Backup Configuration Verification ---"
 echo " "
@@ -44,7 +55,7 @@ function run_sql_check_as_oracle() {
     echo "--- DB Check: $check_name ---"
     
     # Replace the placeholder in the CONNECT_STRING with the actual password
-    local full_connect_string="${CONNECT_STRING/\%DB_PASS_REPLACE\%/$DB_PASS}"
+    local full_connect_string="${CONNECT_STRING/\%CONFIG_DB_PASS_REPLACE\%/$CONFIG_DB_PASS}"
 
     # Execute SQL using su - oracle -c, suppress headers/feedback
     # NOTE: V$ views must be escaped as V\\$ to survive both the outer shell and the su -c shell.
@@ -208,4 +219,4 @@ done
 verify_crontab "rman_daily_cold_fullbu_cdb1.sh" "Oracle Crontab Entry for Daily Backup"
 
 echo " "
-echo "--- ALL VERIFICATION CHECKS PASSED. Backup Configuration is successful! ---"
+echo "--- ALL BACKUP CONFIG VERIFICATION CHECKS PASSED. Backup Configuration is successful! ---"

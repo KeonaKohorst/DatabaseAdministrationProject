@@ -83,4 +83,13 @@ run_sql_check "SELECT constraint_name FROM all_constraints WHERE owner = 'STOCK_
 run_sql_check "SELECT COUNT(*) FROM stock_user.stocks;" "Data Row Count in STOCK_USER.STOCKS"
 
 echo " "
+echo "--- ALL VERIFICATION CHECKS FOR SCHEMA PASSED. ---"
+
+
+# --- Call separate scripts to ensure configuration worked too ---
+/opt/dba_deployment/backup/verify_backup_config.sh "$DB_PASS" # The DB_PASS is passed as the first argument ($1) to the script
+#./auditing/verify_auditing_config.sh "$DB_PASS"
+#./performance/verify_performance_config.sh "$DB_PASS"
+
+echo " "
 echo "--- ALL VERIFICATION CHECKS PASSED. Deployment is successful! ---"
