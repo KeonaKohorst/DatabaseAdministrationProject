@@ -52,12 +52,12 @@ fi
 # Flyway configuration required for all runs (SYSDBA login and restricting tables)
 FLYWAY_COMMON_OPTS="-user=$DB_USER -password=$DB_PASS -schemas=FLYWAY_HISTORY" 
 
-# --- PHASE 1: PDB Structural Deployment (V1.0.0 to V1.0.2) ---
-echo "--- 1. PHASE 1: Deploying PDB Structure (V1.0.0, V1.0.1, V1.0.2) ---"
+# --- PHASE 1: PDB Structural Deployment (V1.0.0 to V1.0.3) ---
+echo "--- 1. PHASE 1: Deploying PDB Structure (V1.0.0, V1.0.1, V1.0.2, V1.0.3) ---"
 
-# Target the PDB URL, running all scripts up to 1.0.2 (Tables and Indexes)
+# Target the PDB URL, running all scripts up to 1.0.3 (Tables and Indexes)
 # We don't need CDB URL, baselineOnMigrate, or any skip flags anymore!
-flyway -url="$DB_PDB_URL" $FLYWAY_COMMON_OPTS -target="1.0.2" migrate
+flyway -url="$DB_PDB_URL" $FLYWAY_COMMON_OPTS -target="1.0.3" migrate
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Flyway structural migration failed. Aborting."
