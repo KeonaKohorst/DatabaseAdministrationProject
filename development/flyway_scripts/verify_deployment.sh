@@ -10,10 +10,46 @@ DB_USER="sys"
 CONNECT_STRING="$DB_USER/%DB_PASS_REPLACE%@localhost:1521/$DB_PDB_SERVICE_NAME as sysdba" 
 # %DB_PASS_REPLACE% is a placeholder for safety, the pass is inserted later in the function.
 
-# --- Prompt for Database Password (DB_PASS) ---
-echo -n "Enter the DB_PASS for user '$DB_USER' for connection to '$DB_PDB_SERVICE_NAME': "
-read -r -s DB_PASS
-echo
+# --- Prompt for Database Password (DB_PASS) and CHECK THAT IT WORKS---
+UTIL_DIR="/opt/dba_deployment/util"
+TEST_CONNECTION_SCRIPT="$UTIL_DIR/test_db_connection.sh"
+
+# Ensure the utility script exists and source it
+if [ -f "$TEST_CONNECTION_SCRIPT" ]; then
+    source "$TEST_CONNECTION_SCRIPT"
+else
+    echo "CRITICAL ERROR: Utility script $TEST_CONNECTION_SCRIPT not found. Aborting."
+    exit 1
+fi
+
+DB_PASS="" # Initialize variable
+MAX_ATTEMPTS=3
+ATTEMPTS=0
+
+while [ "$ATTEMPTS" -lt "$MAX_ATTEMPTS" ]; do
+    echo -n "Enter the DB_PASS for user '$DB_USER' for connection to '$DB_PDB_SERVICE_NAME': "
+    read -r -s DB_PASS
+    echo
+
+    # Test the connection with the provided password, passing all required arguments
+    echo "--- Testing Database Connection ($((ATTEMPTS + 1))/$MAX_ATTEMPTS) ---"
+    test_db_connection "$DB_USER" "$DB_PASS" "$DB_PDB_SERVICE_NAME" 
+
+    if [ $? -eq 0 ]; then
+        echo "--- Connection validated. Proceeding with deployment verification. ---"
+        break # Exit the loop, password is good
+    else
+        ATTEMPTS=$((ATTEMPTS + 1))
+        echo "--- Invalid password or connection error. Please try again. ---"
+    fi
+done
+
+# Check if the loop exited due to failure
+if [ "$ATTEMPTS" -ge "$MAX_ATTEMPTS" ]; then
+    echo ""
+    echo "!!! CRITICAL FAILURE: Maximum login attempts reached. Aborting deployment verification. !!!"
+    exit 1
+fi
 # The password is now stored in $DB_PASS
 
 # --- SQL*Plus Function for Running Checks via 'su - oracle' ---
@@ -88,6 +124,16 @@ echo "--- ALL VERIFICATION CHECKS FOR SCHEMA PASSED. ---"
 
 # --- Call separate scripts to ensure configuration worked too ---
 /opt/dba_deployment/backup/verify_backup_config.sh "$DB_PASS" # The DB_PASS is passed as the first argument ($1) to the script
+
+# Check the exit status of the last command (verify_backup_config.sh)
+if [ $? -ne 0 ]; then
+    echo " "
+    echo "!!! FAILURE: Backup Configuration Verification FAILED. See output above. !!!"
+    echo "--- DEPLOYMENT FAILED. ---"
+    exit 1 # Exit the main script with a non-zero status
+fi
+
+
 #./auditing/verify_auditing_config.sh "$DB_PASS"
 #./performance/verify_performance_config.sh "$DB_PASS"
 

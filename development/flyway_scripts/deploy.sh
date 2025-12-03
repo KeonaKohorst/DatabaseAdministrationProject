@@ -4,14 +4,49 @@
 JDBC_OPTS="?oracle.jdbc.restrictGetTables=false&internal_logon=sysdba"
 # Only the PDB URL is necessary now
 DB_PDB_URL="jdbc:oracle:thin:@//localhost:1521/orclpdb.localdomain${JDBC_OPTS}" 
+DB_PDB_SERVICE_NAME="orclpdb.localdomain"
 
 DB_USER="sys"
-# --- Prompt for Database Password (DB_PASS) ---
-echo -n "Enter the DB_PASS for user '$DB_USER': "
-# Read the password into the DB_PASS variable without displaying it on the screen (-s)
-# The -r flag prevents backslash escapes from being interpreted
-read -r -s DB_PASS
-echo
+# --- Prompt for Database Password (DB_PASS) and CHECK THAT IT WORKS---
+UTIL_DIR="/opt/dba_deployment/util"
+TEST_CONNECTION_SCRIPT="$UTIL_DIR/test_db_connection.sh"
+
+# Ensure the utility script exists and source it
+if [ -f "$TEST_CONNECTION_SCRIPT" ]; then
+    source "$TEST_CONNECTION_SCRIPT"
+else
+    echo "CRITICAL ERROR: Utility script $TEST_CONNECTION_SCRIPT not found. Aborting."
+    exit 1
+fi
+
+DB_PASS="" # Initialize variable
+MAX_ATTEMPTS=3
+ATTEMPTS=0
+
+while [ "$ATTEMPTS" -lt "$MAX_ATTEMPTS" ]; do
+    echo -n "Enter the DB_PASS for user '$DB_USER' for connection to '$DB_PDB_SERVICE_NAME': "
+    read -r -s DB_PASS
+    echo
+
+    # Test the connection with the provided password, passing all required arguments
+    echo "--- Testing Database Connection ($((ATTEMPTS + 1))/$MAX_ATTEMPTS) ---"
+    test_db_connection "$DB_USER" "$DB_PASS" "$DB_PDB_SERVICE_NAME" 
+
+    if [ $? -eq 0 ]; then
+        echo "--- Connection validated. Proceeding with deployment verification. ---"
+        break # Exit the loop, password is good
+    else
+        ATTEMPTS=$((ATTEMPTS + 1))
+        echo "--- Invalid password or connection error. Please try again. ---"
+    fi
+done
+
+# Check if the loop exited due to failure
+if [ "$ATTEMPTS" -ge "$MAX_ATTEMPTS" ]; then
+    echo ""
+    echo "!!! CRITICAL FAILURE: Maximum login attempts reached. Aborting deployment verification. !!!"
+    exit 1
+fi
 # The password is now stored in $DB_PASS
 
 # Flyway configuration required for all runs (SYSDBA login and restricting tables)
@@ -47,6 +82,7 @@ echo "--- 2a. Starting SQLLoader ---"
 
 # Execute SQLLoader using 'su - oracle -c' to switch user and run the command.
 # NOTE: The command string for the '-c' argument must be fully quoted.
+# Uses hard coded password bc the script creates stock_user with password "pass"
 su - oracle -c "sqlldr stock_user/pass@ORCLPDB control=/opt/dba_deployment/data/stocks.ctl log=/opt/dba_deployment/log/stocks.log"
 
 if [ $? -ne 0 ]; then
