@@ -15,9 +15,11 @@ The files are contained within the root directory `/opt/dba_deployment/`.
 ├── backup/   
 ├── performance/   
 ├── auditing/   
+├── util/   
 ├── flyway.conf   
 ├── cleanup.sh   
 ├── install_flyway.sh   
+├── verify_deployment.sh   
 └── deploy.sh  
 
 ## 📋 File and Directory Descriptions
@@ -30,7 +32,9 @@ The files are contained within the root directory `/opt/dba_deployment/`.
 | `backup/` | Directory | **Backup Scripts**. Contains configuration scripts and files related to database backup routines. |
 | `performance/` | Directory | **Performance Configuration**. Holds scripts and files for database performance tuning and configuration. |
 | `auditing/` | Directory | **Auditing Configuration**. Stores scripts and files for configuring database auditing settings. |
+| `util/` | Directory | **Helper Functions**. Stores scripts which are called within other scripts. |
 | `flyway.conf` | File | **Flyway Configuration**. The main configuration file for the Flyway database migration tool. |
 | `cleanup.sh` | Script | **Cleanup Script**. Executable script designed to clean up the environment after a failed deployment. |
 | `install_flyway.sh` | Script | **Flyway Installation Script**. Executable script to install the Flyway Command Line Interface (CLI). |
+| `verify_deployment.sh` | Script | **Deployment Verification Script**. Executable script run after deploy.sh to ensure it worked as intended. |
 | `deploy.sh` | Script | **Master Deployment Script**. The primary executable script that orchestrates the entire database deployment process. |
