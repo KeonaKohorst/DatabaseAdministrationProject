@@ -112,10 +112,13 @@ run_sql_check "SELECT table_name FROM all_tables WHERE owner = 'STOCK_USER' AND 
 INDEXES_TO_CHECK="'STOCKS_SYMBOL_IDX', 'STOCKS_DATE_IDX'"
 run_sql_check "SELECT index_name FROM all_indexes WHERE owner = 'STOCK_USER' AND index_name IN ($INDEXES_TO_CHECK) ORDER BY index_name;" "Indexes STOCKS_SYMBOL_IDX and STOCKS_DATE_IDX"
 
-## 5. Unique Constraint Exists
+## 5. Partitioned Table Exists (STOCK_USER.STOCKS by RANGE on TRADE_DATE)
+run_sql_check "SELECT table_name FROM all_part_tables WHERE owner = 'STOCK_USER' AND table_name = 'STOCKS';" "Partitioned Table STOCK_USER.STOCKS"
+
+## 6. Unique Constraint Exists
 run_sql_check "SELECT constraint_name FROM all_constraints WHERE owner = 'STOCK_USER' AND table_name = 'STOCKS' AND constraint_type = 'U' AND constraint_name LIKE '%SYMBOL_DATE_UNIQ%';" "Unique Constraint on STOCKS"
 
-## 6. Data Row Count (Expected 10001)
+## 7. Data Row Count (Expected 10001)
 run_sql_check "SELECT COUNT(*) FROM stock_user.stocks;" "Data Row Count in STOCK_USER.STOCKS"
 
 echo " "
